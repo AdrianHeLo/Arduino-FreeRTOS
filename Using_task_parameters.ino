@@ -4,11 +4,6 @@
 #define BLUE 7
 #define YELLOW 8
 
-typedef int TaskProfiler;
-TaskProfiler RedLedProfiler;
-TaskProfiler BlueLedProfiler;
-TaskProfiler YellowLedProfiler;
-
 //uint8_t = 0 - 255 bytes / uint16_t = 0 - 255 bytes / uint32_t = 0 - 255 bytes / uint64_t = 0 - 255 bytes /
 
 const uint16_t *red = (uint16_t *) RED;
