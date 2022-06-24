@@ -9,12 +9,6 @@ TaskProfiler RedLedProfiler;
 TaskProfiler BlueLedProfiler;
 TaskProfiler YellowLedProfiler;
 
-//PREGUNTAS: 
-//¿Es una conversion lo de uint16_t* red?
-//¿El uint16_t siempre es lo recomendable de usar? si es si, ¿Por qué?
-//En el xTaskCreate, ¿El (void *) representa la const uint16_t *red?
-
-
 //uint8_t = 0 - 255 bytes / uint16_t = 0 - 255 bytes / uint32_t = 0 - 255 bytes / uint64_t = 0 - 255 bytes /
 
 const uint16_t *red = (uint16_t *) RED;
@@ -39,6 +33,7 @@ void ledControllerTask(void *pvParameters){
   pinMode(YELLOW, OUTPUT);
   while(1){
       digitalWrite(pvParameters, digitalRead(pvParameters)^1);
+      //vTaskDelay(pdMS_TO_TICKS(500)); 
     }
 }
 
