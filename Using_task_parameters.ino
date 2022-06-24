@@ -10,8 +10,8 @@ TaskProfiler BlueLedProfiler;
 TaskProfiler YellowLedProfiler;
 
 //PREGUNTAS: 
-//¿Es una convresion lo de uint16_t* red?
-//¿El uint16_t simpre es lo recomendable de usar? si es si, ¿Por qué?
+//¿Es una conversion lo de uint16_t* red?
+//¿El uint16_t siempre es lo recomendable de usar? si es si, ¿Por qué?
 //En el xTaskCreate, ¿El (void *) representa la const uint16_t *red?
 
 
