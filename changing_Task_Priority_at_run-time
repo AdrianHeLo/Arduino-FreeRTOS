@@ -25,14 +25,14 @@ void setup() {
               "YELLOW LED Task",
               100,
               NULL,
-              1,
+              2,
               &yellow_Handle);
 }
 
 void redLedControllerTask(void *pvParameters){
   pinMode(RED,OUTPUT);
   while (1) {
-    digitalWrite(RED, digitalRead(RED)^1);
+    digitalWrite(RED, !digitalRead(RED));
     delay(50);
   }
 }
@@ -40,7 +40,7 @@ void redLedControllerTask(void *pvParameters){
 void blueLedControllerTask(void *pvParameters){
   pinMode(BLUE,OUTPUT);
   while (1) {
-    digitalWrite(BLUE, digitalRead(BLUE)^1);
+    digitalWrite(BLUE, !digitalRead(BLUE));
     delay(50);
   }
 }
@@ -48,9 +48,9 @@ void blueLedControllerTask(void *pvParameters){
 void yellowLedControllerTask(void *pvParameters){
   pinMode(YELLOW,OUTPUT);
   while (1) {
-    digitalWrite(YELLOW, digitalRead(YELLOW)^1);
+    digitalWrite(YELLOW, !digitalRead(YELLOW));
     //Dar prioridad al Task
-    vTaskPrioritySet(red_Handle, 2);
+    vTaskPrioritySet(yellow_Handle, 2);
     delay(50);
   }
 }
