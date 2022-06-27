@@ -1,2 +1,2 @@
 # Arduino-FreeRTOS
-USing Task Parameters
+Using Task Method
