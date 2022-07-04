@@ -8,27 +8,29 @@
 #include <SPI.h>
 #include <SD.h>
 
-// fecha 18/04/22
 
 //☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠
 //☠☠☠☠☠DefiniciondePines☠☠☠☠☠☠
 //☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠
 //☠☠☠☠☠☠☠Botones☠☠☠☠☠☠☠☠☠☠
-#define BotonArriba A0     //Entrada para el boton de aumento de tiempo Color=Rojo
-#define BotonAbajo 12      //Entrada para el boton de decremento de tiempo Color=Azul
-#define BotonPause 8       //Boton Puase Color = Verde
+#define BotonArriba    18    //Entrada para el boton de aumento de tiempo Color=Rojo
+#define BotonAbajo     19    //Entrada para el boton de decremento de tiempo Color=Azul
+#define BotonPause     20
+#define BotonReiniciar 21 
 //☠☠☠☠☠☠☠Realy☠☠☠☠☠☠☠☠☠☠
-#define pinRelay A2        // Salida del Relay
+#define pinRelay A2           // Salida del Relay
 //☠☠☠☠☠☠☠Sensor☠☠☠☠☠☠☠☠☠
-#define Sensor = 7;        //Pin del Sensor
+#define Sensor 7              //Pin del Senso
 //☠☠☠☠☠☠☠LCD I2C☠☠☠☠☠☠☠☠☠
-#define SCL A5
-#define SDA A4
+#define SCL SCL
+#define SDA SDA
 LiquidCrystal_I2C lcd(0x27,20,4);  // set the LCD address to 0x27 for a 16 chars and 2 line display or 0x3F
 
 //☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠
 //☠☠☠☠☠☠☠☠Variables☠☠☠☠☠☠☠☠
 //☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠
+long diferencia = 0;
+long tiempo_anterior = 0;
 unsigned int cycles = 0;   // Variable que guarda los ciclos (dando un rango útil de 0 a 65,535 ciclos)
 int timer;                 //Tiempo que mostrara la pantalla LCD
 int tiempoTemp = 60;       //Valor del temporizador del timer predeterminado
@@ -44,18 +46,195 @@ int BotonPauseVar = 0;
 bool actualizar;
 bool indicadorPause;
 bool EstadoPuerta = true;  //Estado de la puerta
+bool Posicion;
 
-const enum ESTADO_PUERTA{
-     Puerta_Abierta,       //Valor 0
-     Puerta_Cerrada        //Valor 1
+enum ESTADO_PUERTA{
+     Puerta_Abierta,
+     Puerta_Cerrada
    };
 
 
 //☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠
 //☠☠☠☠☠☠☠☠Tasks☠☠☠☠☠☠☠☠☠☠
 //☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠
-TaskHandle_t relay_Handle, sensor_Handle, botonArriba_Handle, botonAbajo_Handle, botonPause_Handle;
+TaskHandle_t relay_Handle, sensor_Handle, botonArriba_Handle, botonAbajo_Handle, botonPause_Handle, botonReiniciar_Handle, timer_Handle;
 
+
+//☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠
+//☠☠☠☠☠☠☠CallbackTasks☠☠☠☠☠☠
+//☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠
+ISR(TIMER1_OVF_vect) {
+  TCNT1 = 2791;               //valor para 1 segundo
+  actualizar = true;
+  if(resetTimer == true){
+    resetTemp--;
+    }
+}
+
+void reinicio() {
+  timer = tiempoTemp;
+}
+
+void actualizarLCD() {
+  lcd.clear();
+  lcd.setCursor(6, 0);
+  lcd.print("#Cycles");
+  lcd.setCursor(6, 1);
+  lcd.print(cycles);
+  lcd.setCursor(6, 2);
+  lcd.print("Timer");
+  lcd.setCursor(6, 3);
+  lcd.print(tiempoTemp);
+}
+
+void Relay_Task(void *pvParameters){
+  pinMode(pinRelay, OUTPUT);
+  while(1){
+    digitalWrite(pinRelay, LOW);
+    vTaskDelay(300);
+    digitalWrite(pinRelay, HIGH);
+    vTaskDelay(300);
+  }
+}
+
+void Sensor_Task(void *pvParameters){
+  pinMode(Sensor, INPUT);
+  while(1){
+    Posicion = digitalRead(Sensor);
+    if(Posicion == Puerta_Abierta){
+      cycles++;
+      EstadoPuerta = true;
+    }else{
+      EstadoPuerta = false;
+    }
+  }
+}
+//
+//void Timer_Task(void *pvParameters){
+//      if(indicadorPause == false){
+//        if(actualizar == true){
+//          timer = timer - 1;
+//    
+//          if(timer == 0 ){
+//            vTaskResume(relay_Handle);
+//            reinicio();
+//          }else{
+//            vTaskSuspend(relay_Handle);
+//          }
+//          
+//          lcd.clear();
+//          actualizar = false;
+//          vTaskResume(sensor_Handle);
+//          vTaskSuspend(botonPause_Handle);    
+//          }
+//          //grabar en la eeprom el conteo de cycle
+//         EEPROM.write(0, cycles >> 8);
+//         EEPROM.write(1, cycles & 0xFF);
+//        }    
+//  }
+
+void Boton_Reiniciar_Task(void *pvParameters){
+  pinMode(BotonReiniciar, INPUT_PULLUP);
+  while(1){
+       diferencia = millis() - tiempo_anterior;
+       tiempo_anterior = millis();
+        if (diferencia > 250){
+            resetTimer= true;
+              //Reiniciar una prueba
+              if(resetTemp < 0){
+                resetTemp = 5;
+                cycles = 0;
+                BotonPauseVar = 2;
+                //indicadorPause = false;
+                timer = tiempoTemp;
+                EEPROM.write(0, 0);
+                EEPROM.write(1, 0);
+                lcd.clear();
+              }
+            }
+          timer = tiempoTemp;
+          actualizarLCD();
+          vTaskDelay(300);
+        }
+  }
+
+void Boton_Arriba_Task(void *pvParameters){
+  pinMode(BotonArriba, INPUT_PULLUP);
+  while(1){
+       diferencia = millis() - tiempo_anterior;
+       tiempo_anterior = millis();
+        if (diferencia > 250){
+          tiempoTemp = tiempoTemp + 10;
+            if (tiempoTemp > 600) {
+              tiempoTemp = 10;
+            }
+          timer = tiempoTemp;
+          actualizarLCD();
+          vTaskDelay(300);
+        }
+  }
+}
+
+void Boton_Abajo_Task(void *pvParameters){
+  pinMode(BotonAbajo, INPUT_PULLUP);
+  while(1){
+       diferencia = millis() - tiempo_anterior;
+       tiempo_anterior = millis();
+       if (diferencia > 250){
+        tiempoTemp = tiempoTemp - 10;
+          if (tiempoTemp < 10) {
+            tiempoTemp = 600;
+        }
+        timer = tiempoTemp;
+        actualizarLCD();
+        vTaskDelay(300);
+       }
+  }
+}
+
+void Boton_Pause_Task(void *pvParameters){
+  pinMode(BotonPause, INPUT_PULLUP);
+  while(1){
+    diferencia = millis() - tiempo_anterior;
+    tiempo_anterior = millis();
+    if(diferencia > 250){
+      actualizarLCD();
+      BotonPauseVar = BotonPauseVar + 1;
+      if (BotonPauseVar == 1) {
+        indicadorPause = true;
+        vTaskSuspend(timer_Handle);
+      }
+      else {
+        indicadorPause = false;
+        vTaskResume(timer_Handle);
+      }
+  
+      while (BotonPauseVar == 1) {
+      if (digitalRead(BotonPause) == HIGH) {
+        BotonPauseVar = BotonPauseVar + 1;         
+        vTaskResume(botonReiniciar_Handle);          
+      }else{
+        resetTimer= false;
+        resetTemp=5;
+        vTaskSuspend(botonReiniciar_Handle);
+      }
+          
+      if (BotonPauseVar == 2) {
+          EEPROM.write(2, tiempoTemp >> 8);
+          EEPROM.write(3, tiempoTemp  & 0xFF);
+          BotonPauseVar = 0;
+          //guardar en la eeprom el timer
+          indicadorPause = false;
+          lcd.clear();
+          }
+        }
+     }else{
+        vTaskSuspend(botonArriba_Handle);
+        vTaskSuspend(botonAbajo_Handle);
+    }
+ 
+  }
+}
 
 //☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠
 //☠☠☠☠☠☠☠☠SetUp☠☠☠☠☠☠☠☠☠☠
@@ -91,30 +270,23 @@ void setup() {
   timer = tiempoTemp;
   
   //Task de las Entradas del Trigger
-  xTaskCreate(Realy_Task, "Task del Relay", 100, NULL, 1, &relay_Handle);
+  xTaskCreate(Relay_Task, "Task del Relay", 100, NULL, 1, &relay_Handle);
   xTaskCreate(Sensor_Task, "Task del Sensor", 100, NULL, 1, &sensor_Handle);  
   xTaskCreate(Boton_Arriba_Task, "Task de aumentar tiempo", 100, NULL, 1, &botonArriba_Handle);
   xTaskCreate(Boton_Abajo_Task, "Task de disminuir tiempo", 100, NULL, 1, &botonAbajo_Handle);
   xTaskCreate(Boton_Pause_Task, "Task de pausar", 100, NULL, 1, &botonPause_Handle);
-  xTaskCreate(Timer_Task, "Task del tiempo", 100, NULL, 2, NULL);
+  xTaskCreate(Boton_Reiniciar_Task, "Task de reiniciar prueba", 100, NULL, 1, &botonReiniciar_Handle);
+//  xTaskCreate(Timer_Task, "Task tiempo", 100, NULL, 1, &timer_Handle);
 
   
   attachInterrupt(digitalPinToInterrupt(BotonArriba),Boton_Arriba_Task, FALLING);
   attachInterrupt(digitalPinToInterrupt(BotonAbajo),Boton_Abajo_Task, FALLING);
   attachInterrupt(digitalPinToInterrupt(BotonPause), Boton_Pause_Task, FALLING);
+  attachInterrupt(digitalPinToInterrupt(BotonPause), Boton_Reiniciar_Task, FALLING);
 }
 
-
-
-//☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠
-//☠☠☠☠☠☠☠CallbackTasks☠☠☠☠☠☠
-//☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠
-void Timer_Task(void *pvParameters){
-  if(){
-    vTaskResume(botonPause_Handle);
-  }
-  else{
-      if(indicadorPause == false){
+void loop() {
+       if(indicadorPause == false){
         if(actualizar == true){
           timer = timer - 1;
     
@@ -127,134 +299,19 @@ void Timer_Task(void *pvParameters){
           
           lcd.clear();
           actualizar = false;
-          Sensor_Task();    
+          vTaskResume(sensor_Handle);
+          vTaskSuspend(botonPause_Handle);    
           }
-        }
-    
-      lcd.setCursor(6, 0);
-      lcd.print("#Cycles");
-      lcd.setCursor(6, 1);
-      lcd.print(cycles);
-      lcd.setCursor(6, 2);
-      lcd.print("Timer");
-      lcd.setCursor(6, 3);
-      lcd.print(timer);
+          //grabar en la eeprom el conteo de cycle
+         EEPROM.write(0, cycles >> 8);
+         EEPROM.write(1, cycles & 0xFF);
+        } 
+        lcd.setCursor(6, 0);
+        lcd.print("#Cycles");
+        lcd.setCursor(6, 1);
+        lcd.print(cycles);
+        lcd.setCursor(6, 2);
+        lcd.print("Timer");
+        lcd.setCursor(6, 3);
+        lcd.print(timer);
   }
-}
-
-
-
-
-void Boton_Pause_Task(void *pvParameters){
-  pinMode(BotonPause, INPUT);
-  while(1){
-    if(){
-      actualizarLCD();
-      BotonPauseVar = BotonPauseVar + 1;
-      if (BotonPauseVar == 1) {
-        indicadorPause = true;
-      }
-      else {
-        indicadorPause = false;
-      }
-  
-      while (BotonPauseVar == 1) {
-          vTaskResume(Boton_Arriba_Task);
-          vTaskResume(Boton_Abajo_Task);
-          if (digitalRead(BotonPause) == LOW) {
-            if(bitRead(rebotes, 1) == 0){
-              BotonPauseVar = BotonPauseVar + 1;
-              }else{          
-                resetTimer= true;
-                if (resetTemp< 0){
-                  resetTemp = 5;
-                  cycles = 0;
-                  BotonPauseVar = 2;
-                  //indicadorPause = false;
-                  timer = tiempoTemp;
-                  EEPROM.write(0, 0);
-                  EEPROM.write(1, 0);
-                  lcd.clear();                
-                  }
-                }    
-             }else{
-            resetTimer= false;
-            resetTemp=5;
-          }    
-              
-          if(BotonPauseVar == 2){
-            EEPROM.write(2, tiempoTemp >> 8);
-            EEPROM.write(3, tiempoTemp  & 0xFF);
-            BotonPauseVar = 0;
-            //guardar en la eeprom el timer
-            indicadorPause = false;
-            lcd.clear();
-       }
-      }
-     }else{
-      vTaskSuspend(Boton_Arriba_Task);
-      vTaskSuspend(Boton_Abajo_Task);
-      vTaskSuspend(Boton_Arriba_Task);
-    }
- 
-  }
-}
-
-
-void Boton_Arriba_Task(void *pvParameters){
-  pinMode(BotonArriba, INPUT);
-  while(1){
-        tiempoTemp = tiempoTemp + 10;
-        if (tiempoTemp > 600) {
-          tiempoTemp = 10;
-        }
-        timer = tiempoTemp;
-        actualizarLCD();
-        vTaskDelay(300);
-  }
-}
-
-void Boton_Abajo_Task(void *pvParameters){
-  pinMode(BotonAbajo, INPUT);
-  while(1){
-        tiempoTemp = tiempoTemp - 10;
-        if (tiempoTemp < 10) {
-          tiempoTemp = 600;
-        }
-        timer = tiempoTemp;
-        actualizarLCD();
-        vTaskDelay(300);
-  }
-}
-
-void Realy_Task(void *pvParameters){
-  pinMode(pinRelay, OUTPUT);
-  while(1){
-    digitalWrite(pinRelay, LOW);
-    vTaskDelay(500);
-    digitalWrite(pinRelay, HIGH);   
-  }
- 
-}
-
-void Sensor_Task(void *pvParameters){
-  pinMode(Sensor, INPUT);
-  while(1){
-      bool Entrada_Sensor = digitalRead(Sensor);
-      //false = abierto, true = cerrado
-      if(Entrada_Sensor == Puerta_Abierta){
-        //Agregar Posicion de la Puerta Abierta en la LCD
-        cycles++;
-      }else if(Entrada_Sensor == Puerta_Cerrada){                                  
-        //Agregar Posicion de la Puerta Cerrada en la LCD               
-      }
-      EEPROM.write(0, cycles >> 8);
-      EEPROM.write(1, cycles & 0xFF);
-      vTaskDelay(300);
-  }
-}
-
-
-
-
-void loop() {}
