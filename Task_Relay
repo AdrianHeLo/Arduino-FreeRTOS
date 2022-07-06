@@ -1,0 +1,157 @@
+//☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠
+//☠☠☠☠☠☠☠☠Librerias☠☠☠☠☠☠☠☠
+//☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠
+#include <Arduino_FreeRTOS.h>
+#include <avr/io.h>
+#include <LiquidCrystal_I2C.h>
+#include<Wire.h>
+#include <EEPROM.h>
+#include <SPI.h>
+#include <SD.h>
+
+
+//☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠
+//☠☠☠☠☠DefiniciondePines☠☠☠☠☠☠
+//☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠
+//☠☠☠☠☠☠☠Botones☠☠☠☠☠☠☠☠☠☠
+#define BotonArriba    4    //Entrada para el boton de aumento de tiempo Color=Rojo
+#define BotonAbajo     5    //Entrada para el boton de decremento de tiempo Color=Azul
+#define BotonPause     2
+#define BotonReiniciar 3 
+
+//☠☠☠☠☠☠☠Realy☠☠☠☠☠☠☠☠☠☠
+#define pinRelay A2         // Salida del Relay
+
+//☠☠☠☠☠☠☠Sensor☠☠☠☠☠☠☠☠☠
+#define Sensor 7            //Pin del Senso
+
+//☠☠☠☠☠☠☠LCD I2C☠☠☠☠☠☠☠☠☠
+#define SCL SCL
+#define SDA SDA
+LiquidCrystal_I2C lcd(0x27,20,4);  // set the LCD address to 0x27 for a 16 chars and 2 line display or 0x3F
+
+//☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠
+//☠☠☠☠☠☠☠☠Variables☠☠☠☠☠☠☠☠
+//☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠
+long diferencia = 0;
+long tiempo_anterior = 0;
+unsigned int cycles = 0;   // Variable que guarda los ciclos (dando un rango útil de 0 a 65,535 ciclos)
+int timer;                 //Tiempo que mostrara la pantalla LCD
+//int tiempoTemp = 60;       //Valor del temporizador del timer predeterminado
+int tiempoTemp = 10;       
+int highCiclos;            //Variable para guardar datos altos de los ciclos en la EEPROM
+int lowCiclos;             //Variable para guardar datos bajos de los ciclos en la EEPROM
+int tiempoHigh;            //variable de tiempo en alto que se guarda en la EEPROM
+int tiempoLow;             //variable de tiempo en bajo que se guarda en la EEPROM
+int rebotes;               //variable que permite que en los botone al mantener presionados capture un solo pulso   
+int resetTemp = 5;         //
+
+int resetTimer;
+int BotonPauseVar = 0;
+bool actualizar;
+bool indicadorPause;
+bool EstadoPuerta = true;  //Estado de la puerta
+bool Posicion;
+
+enum ESTADO_PUERTA{
+     Puerta_Abierta,
+     Puerta_Cerrada
+   };
+
+
+//☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠
+//☠☠☠☠☠☠☠☠Tasks☠☠☠☠☠☠☠☠☠☠
+//☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠
+TaskHandle_t relay_Handle, 
+             sensor_Handle, 
+             botonArriba_Handle, 
+             botonAbajo_Handle, 
+             botonPause_Handle, 
+             botonReiniciar_Handle, 
+             lcd_Handle, 
+             timer_Handle,
+             restartTimer_Handle;
+
+
+//☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠
+//☠☠☠☠☠☠☠CallbackTasks☠☠☠☠☠☠
+//☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠
+ ISR(TIMER1_OVF_vect) {
+  TCNT1 = 2791;               //valor para 1 segundo
+  actualizar = true;
+  if(resetTimer == true){
+    resetTemp--;
+    }
+  } 
+
+void Restart_Task (void *pvParameters) {
+  timer = tiempoTemp;
+}
+
+void Relay_Task (void *pvParameters){
+  if (actualizar == true) {
+      timer = timer - 1;
+      Serial.print("Tiempo Restante: " + timer);
+      if (timer == 0 ) {
+        digitalWrite(pinRelay, LOW);
+        vTaskResume(restartTimer_Handle);
+        Serial.println(" , Estado del Relay: ON");
+      }
+      else {
+        digitalWrite(pinRelay, HIGH);
+        vTaskSuspend(restartTimer_Handle);
+        Serial.println(" , Estado del Relay: OFF");
+      }
+      vTaskDelay(300);        
+   }
+}
+
+
+
+//☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠
+//☠☠☠☠☠☠☠☠SetUp☠☠☠☠☠☠☠☠☠☠
+//☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠☠
+void setup() {
+  // put your setup code here, to run once:
+  Serial.begin(9600);
+  lcd.init();
+  lcd.backlight();
+  lcd.clear();
+
+  timer = tiempoTemp;
+  TCCR1A = 0;               //1A y 1B variables para iniciar y declarar TCNT1
+  TCCR1B = 0;
+  TCNT1 = 2791;             // valor para 1 segundo
+  TCCR1B |= (1 << CS12);    // 256 prescaler
+  TIMSK1 |= (1 << TOIE1);   // enable timer overflow interrupt
+
+  //Leer el cycles y el contador desde la EEPROM
+  highCiclos = EEPROM.read(0);
+  lowCiclos = EEPROM.read(1);
+
+  tiempoHigh = EEPROM.read(2);
+  tiempoLow = EEPROM.read(3);
+
+  cycles = highCiclos;
+  cycles = cycles << 8;
+  cycles |= lowCiclos;
+
+  tiempoTemp = tiempoHigh;
+  tiempoTemp = tiempoTemp << 8;
+  tiempoTemp |= tiempoLow;
+  timer = tiempoTemp;
+  
+  //Task de las Entradas del Trigger
+  xTaskCreate(Relay_Task, "Task del Relay", 100, NULL, 1, &relay_Handle);
+//  xTaskCreate(Sensor_Task, "Task del Sensor", 100, NULL, 1, &sensor_Handle);  
+//  xTaskCreate(Boton_Arriba_Task, "Task de aumentar tiempo", 100, NULL, 1, &botonArriba_Handle);
+//  xTaskCreate(Boton_Abajo_Task, "Task de disminuir tiempo", 100, NULL, 1, &botonAbajo_Handle);
+//  xTaskCreate(Boton_Pause_Task, "Task de pausar", 100, NULL, 1, &botonPause_Handle);
+//  xTaskCreate(Boton_Reiniciar_Task, "Task de reiniciar prueba", 100, NULL, 1, &botonReiniciar_Handle);
+//  xTaskCreate(Timer_Task, "Task tiempo", 100, NULL, 1, &timer_Handle);
+//  xTaskCreate(LCD_Task, "Task Pantalla", 100, NULL, 1, &lcd_Handle);
+  xTaskCreate(Restart_Task, "Task Pantalla", 100, NULL, 1, &restartTimer_Handle);
+}
+
+
+void loop() {}
