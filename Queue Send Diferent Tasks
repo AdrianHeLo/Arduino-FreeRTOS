@@ -1,0 +1,57 @@
+#include <Arduino_FreeRTOS.h>
+#include "queue.h"
+
+#define RED    3
+#define BLUE   4
+#define YELLOW 2
+
+typedef int TaskProfiler;
+TaskProfiler SenderTaskProfiler;
+TaskProfiler ReciverTaskProfiler;
+
+QueueHandle_t yearQueue;
+
+void setup()
+{
+  Serial.begin(9600);
+  yearQueue = xQueueCreate(5, sizeof(int32_t));
+  xTaskCreate(vSenderTask, "Sender Task 1", 100, 1999, 1, NULL);
+  xTaskCreate(vSenderTask, "Sender Task 2", 100, 2019, 1, NULL);
+  xTaskCreate(vReciverTask, "Reciver Task", 100, NULL, 2, NULL);
+}
+
+void vSenderTask(void *pvParameters){
+  BaseType_t qStatus;
+  int32_t valueToSend;
+  valueToSend = (int32_t)pvParameters;
+  pinMode(RED, OUTPUT);
+  while(1){
+    qStatus = xQueueSend(yearQueue, &valueToSend, 0);
+    if(qStatus != pdPASS){
+      Serial.println("Could not send to the Queue");
+    }
+    digitalWrite(RED, HIGH);
+    vTaskDelay(300);
+  }
+}
+
+void vReciverTask(void *pvParameters){
+  BaseType_t qStatus;
+  int32_t valueToRecived;
+  valueToRecived = (int32_t)pvParameters;
+  const TickType_t xTicketToWait = pdMS_TO_TICKS(100);
+  for(;;){
+    qStatus = xQueueReceive(yearQueue, &valueToRecived, xTicketToWait);
+    if(qStatus == pdPASS){
+      Serial.print("Data recived successfully: ");
+      Serial.println(valueToRecived);
+    }else{
+      Serial.println("Could not recived to the Queue");
+    }
+    digitalWrite(RED, LOW);
+    vTaskDelay(300);
+  }
+}
+
+
+void loop(){}
