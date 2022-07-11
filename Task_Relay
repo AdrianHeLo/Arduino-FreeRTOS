@@ -51,19 +51,19 @@ void setup() {
   Serial.begin(9600);
   xTaskCreate(Timer_Task,
               "TIMER TASK",
-              100,
+              1024,
               NULL,
               1,
               &timer_Handle);
   xTaskCreate(Relay_Task,
               "RELAY TASK",
-              100,
+              1024,
               NULL,
               1,
               &relay_Handle); 
   xTaskCreate(Sensor_Task,
               "SENSOR TASK",
-              100,
+              1024,
               NULL,
               1,
               &sensor_Handle); 
